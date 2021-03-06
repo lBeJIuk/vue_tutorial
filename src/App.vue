@@ -36,7 +36,6 @@
             <div class="mt-1 relative rounded-md shadow-md">
               <input
                 @keyDown.enter="add"
-                @keydown="autocomplette"
                 v-model="ticker"
                 type="text"
                 name="wallet"
@@ -46,11 +45,11 @@
               />
             </div>
             <div
-              v-if="ticker !== '' && tickerAutocomplette.length !== 0"
+              v-if="ticker !== '' && autocompletteTickers.length !== 0"
               class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap"
             >
               <span
-                v-for="(item, index) in tickerAutocomplette"
+                v-for="(item, index) in autocompletteTickers"
                 :key="index"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
                 @click="addFromAutocomplette(item)"
@@ -197,7 +196,7 @@ export default {
   name: "App",
   data() {
     return {
-      token: "3efccbae7151d765272f12056af3afcaa714e10bad46f3b21c74fefa719caa6a",
+      token: localStorage.getItem("token"),
       ticker: "",
       tickers: [],
       selectedTicker: null,
@@ -205,7 +204,6 @@ export default {
       coinsList: [],
       loadingMask: true,
       tickerErrorMessage: "",
-      tickerAutocomplette: [],
       filter: "",
       page: 1
     };
@@ -273,17 +271,6 @@ export default {
 
     select(t) {
       this.selectedTicker = t;
-    },
-    autocomplette() {
-      this.tickerErrorMessage = "";
-      this.tickerAutocomplette = this.coinsList
-        .filter(
-          item =>
-            item.symbol.includes(this.ticker.toLowerCase()) ||
-            item.fullname.includes(this.ticker.toLowerCase())
-        )
-        .slice(0, 4)
-        .map(item => item.symbol);
     }
   },
   computed: {
@@ -300,6 +287,16 @@ export default {
     },
     paginatedTickers() {
       return this.filteredTickers.slice(this.startIndex, this.endIndex);
+    },
+    autocompletteTickers() {
+      return this.coinsList
+        .filter(
+          item =>
+            item.symbol.includes(this.ticker.toLowerCase()) ||
+            item.fullname.includes(this.ticker.toLowerCase())
+        )
+        .slice(0, 4)
+        .map(item => item.symbol);
     },
     hasNextPage() {
       return this.filteredTickers.length > this.endIndex;
@@ -348,6 +345,9 @@ export default {
     }
   },
   watch: {
+    ticker() {
+      this.tickerErrorMessage = "";
+    },
     tickers() {
       localStorage.setItem("cryptonomicon-list", JSON.stringify(this.tickers));
     },
