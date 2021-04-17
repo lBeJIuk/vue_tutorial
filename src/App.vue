@@ -113,7 +113,10 @@
             @click="select(t)"
             class="bg-white overflow-hidden shadow rounded-lg border-purple-800
             border-solid cursor-pointer"
-            :class="{ 'border-4': selectedTicker === t }"
+            :class="{
+              'border-4': selectedTicker === t,
+              'bg-red-100': t.invalid === true
+            }"
           >
             <div class="px-4 py-5 sm:p-6 text-center">
               <dt class="text-sm font-medium text-gray-500 truncate">
@@ -224,7 +227,8 @@ export default {
     add() {
       const newTicker = {
         name: this.ticker.toUpperCase(),
-        price: "-"
+        price: "-",
+        invalid: false
       };
       if (
         this.tickers.find(ticker => ticker.name === newTicker.name) !==
@@ -254,8 +258,13 @@ export default {
 
       subscribeToTicker(
         newTicker.name,
-        subscribeToTicker(newTicker.name, price => {
+        (newTicker.name,
+        price => {
           this.updateTickers(newTicker.name, price);
+        }),
+        (newTicker.name,
+        () => {
+          this.updateTickers(newTicker.name, "_", true);
         })
       );
     },
@@ -274,11 +283,12 @@ export default {
     select(t) {
       this.selectedTicker = t;
     },
-    updateTickers(tickerName, price) {
+    updateTickers(tickerName, price, invalid = false) {
       this.tickers
         .filter(t => t.name === tickerName)
         .forEach(t => {
           t.price = price;
+          t.invalid = invalid;
           if (t === this.selectedTicker) {
             this.graph.push(price);
           }
@@ -349,9 +359,15 @@ export default {
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
       this.tickers.forEach(t => {
-        subscribeToTicker(t.name, price => {
-          this.updateTickers(t.name, price);
-        });
+        subscribeToTicker(
+          t.name,
+          price => {
+            this.updateTickers(t.name, price);
+          },
+          () => {
+            this.updateTickers(t.name, "_", true);
+          }
+        );
       });
     }
     setInterval(this.updateTickers, 5000);

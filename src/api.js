@@ -1,5 +1,8 @@
 const API_KEY = localStorage.getItem("token");
-const AGGREGATE_INDEX = 5;
+const AGGREGATE_INDEX = "5";
+const INVALID_SUB = "500";
+const INVALID_SUB_MESSAGE = "INVALID_SUB";
+const AGGREGATE_INDEX_TOPIC = "5~CCCAGG~";
 const TYPES = {
   RUNNING: 1,
   REQUEST: 2,
@@ -11,13 +14,13 @@ let socket = null;
 function subsctibeToTickerOnWs(ticker) {
   sendMessage({
     action: "SubAdd",
-    subs: [`5~CCCAGG~${ticker}~USD`]
+    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~USD`]
   });
 }
 function unsubsctibeToTickerFromWs(ticker) {
   sendMessage({
     action: "SubRemove",
-    subs: [`5~CCCAGG~${ticker}~USD`]
+    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~USD`]
   });
 }
 function sendMessage(message) {
@@ -35,7 +38,8 @@ function sendMessage(message) {
   );
 }
 
-const tickersHandlers = new Map();
+const tickersSuccessHandlers = new Map();
+const tickersErrorHandlers = new Map();
 
 var bc = new BroadcastChannel("tabs");
 bc.addEventListener("message", function(message) {
@@ -64,14 +68,31 @@ setTimeout(function() {
 }, 1);
 
 function handleResponse(e) {
-  const { TYPE: type, FROMSYMBOL: currency, PRICE: newPrice } = JSON.parse(
-    e.data
-  );
-  if (type != AGGREGATE_INDEX || newPrice === undefined) {
-    return;
+  const {
+    TYPE: type,
+    FROMSYMBOL: currency,
+    PRICE: newPrice,
+    MESSAGE: message,
+    PARAMETER: parametr
+  } = JSON.parse(e.data);
+  debugger;
+  switch (type) {
+    case AGGREGATE_INDEX:
+      if (newPrice !== undefined) {
+        const handlers = tickersSuccessHandlers.get(currency) ?? [];
+        handlers.forEach(fn => fn(newPrice));
+      }
+      break;
+    case INVALID_SUB:
+      if (message === INVALID_SUB_MESSAGE) {
+        const tmpCurrency = currency
+          ? currency
+          : parametr.replace(AGGREGATE_INDEX_TOPIC, "").split("~")[0];
+        const handlers = tickersErrorHandlers.get(tmpCurrency) ?? [];
+        handlers.forEach(fn => fn());
+      }
+      break;
   }
-  const handlers = tickersHandlers.get(currency) ?? [];
-  handlers.forEach(fn => fn(newPrice));
 }
 
 export const loadAllCoins = () =>
@@ -79,13 +100,14 @@ export const loadAllCoins = () =>
     `https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=${API_KEY}`
   ).then(r => r.json());
 
-export const subscribeToTicker = (ticker, cb) => {
-  const subscribers = tickersHandlers.get(ticker) || [];
-  tickersHandlers.set(ticker, [...subscribers, cb]);
+export const subscribeToTicker = (ticker, cbSuccess, cbError) => {
+  const subscribers = tickersSuccessHandlers.get(ticker) || [];
+  tickersSuccessHandlers.set(ticker, [...subscribers, cbSuccess]);
+  tickersErrorHandlers.set(ticker, [...subscribers, cbError]);
   subsctibeToTickerOnWs(ticker);
 };
 
 export const unsubscribeFromTicker = ticker => {
-  tickersHandlers.delete(ticker);
+  tickersSuccessHandlers.delete(ticker);
   unsubsctibeToTickerFromWs(ticker);
 };
