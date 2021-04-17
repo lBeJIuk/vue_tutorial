@@ -11,16 +11,16 @@ const TYPES = {
 let CONFIGURED = false;
 let socket = null;
 
-function subsctibeToTickerOnWs(ticker) {
+function subsctibeToTickerOnWs(ticker, target = "USD") {
   sendMessage({
     action: "SubAdd",
-    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~USD`]
+    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~${target}`]
   });
 }
-function unsubsctibeToTickerFromWs(ticker) {
+function unsubsctibeToTickerFromWs(ticker, target = "USD") {
   sendMessage({
     action: "SubRemove",
-    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~USD`]
+    subs: [`${AGGREGATE_INDEX_TOPIC}${ticker}~${target}`]
   });
 }
 function sendMessage(message) {
@@ -40,6 +40,8 @@ function sendMessage(message) {
 
 const tickersSuccessHandlers = new Map();
 const tickersErrorHandlers = new Map();
+const tickerCrossConvert = new Map();
+let btc_to_usd;
 
 var bc = new BroadcastChannel("tabs");
 bc.addEventListener("message", function(message) {
@@ -60,6 +62,10 @@ setTimeout(function() {
     socket = new WebSocket(
       `wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`
     );
+
+    // internal subscription
+    subscribeToTicker("BTC", () => {});
+
     socket.addEventListener("message", e => {
       bc.postMessage({ type: TYPES.DATA, data: e.data });
       handleResponse(e);
@@ -70,26 +76,53 @@ setTimeout(function() {
 function handleResponse(e) {
   const {
     TYPE: type,
-    FROMSYMBOL: currency,
+    FROMSYMBOL: tmpCurrency,
     PRICE: newPrice,
     MESSAGE: message,
-    PARAMETER: parametr
+    PARAMETER: parametr,
+    TOSYMBOL: to
   } = JSON.parse(e.data);
+  const currency = tmpCurrency
+    ? tmpCurrency
+    : parametr?.replace(AGGREGATE_INDEX_TOPIC, "").split("~")[0];
+  if (!currency) {
+    return false;
+  }
   debugger;
   switch (type) {
     case AGGREGATE_INDEX:
       if (newPrice !== undefined) {
-        const handlers = tickersSuccessHandlers.get(currency) ?? [];
-        handlers.forEach(fn => fn(newPrice));
+        if (currency === "BTC" && tickerCrossConvert.size > 0) {
+          if (to === "USD") {
+            btc_to_usd = newPrice;
+          } else {
+            tickerCrossConvert.set(to, newPrice);
+          }
+          // update all crossconverted
+          _crossconvert();
+        }
+        if (tickerCrossConvert.has(currency)) {
+          // target currescy changed
+          tickerCrossConvert.set(currency, newPrice);
+          _crossconvert();
+        } else {
+          const handlers = tickersSuccessHandlers.get(currency) ?? [];
+          handlers.forEach(fn => fn(newPrice));
+        }
       }
       break;
     case INVALID_SUB:
       if (message === INVALID_SUB_MESSAGE) {
-        const tmpCurrency = currency
-          ? currency
-          : parametr.replace(AGGREGATE_INDEX_TOPIC, "").split("~")[0];
-        const handlers = tickersErrorHandlers.get(tmpCurrency) ?? [];
-        handlers.forEach(fn => fn());
+        if (tickerCrossConvert.has(currency)) {
+          // Already cross converted, but stil no data
+          const handlers = tickersErrorHandlers.get(currency) ?? [];
+          handlers.forEach(fn => fn());
+        } else {
+          // Try to crossconvert
+          // unsubscribeFromTicker(currency);
+          subsctibeToTickerOnWs(currency, "BTC");
+          tickerCrossConvert.set(currency, 0);
+        }
       }
       break;
   }
@@ -109,5 +142,17 @@ export const subscribeToTicker = (ticker, cbSuccess, cbError) => {
 
 export const unsubscribeFromTicker = ticker => {
   tickersSuccessHandlers.delete(ticker);
-  unsubsctibeToTickerFromWs(ticker);
+  tickerCrossConvert.delete(ticker);
+  // BTC is internal currency
+  if (ticker !== "BTC") {
+    unsubsctibeToTickerFromWs(ticker);
+  }
 };
+
+function _crossconvert() {
+  tickerCrossConvert.forEach((v, currency) => {
+    const newPrice = v * btc_to_usd;
+    const handlers = tickersSuccessHandlers.get(currency) ?? [];
+    handlers.forEach(fn => fn(newPrice));
+  });
+}
