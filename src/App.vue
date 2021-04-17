@@ -154,7 +154,10 @@
         <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
           VUE - USD
         </h3>
-        <div class="flex items-end border-gray-600 border-b border-l h-64">
+        <div
+          class="flex items-end border-gray-600 border-b border-l h-64"
+          ref="graph"
+        >
           <div
             v-for="(bar, index) in normalizedGraph"
             :key="index"
@@ -213,10 +216,17 @@ export default {
       loadingMask: true,
       tickerErrorMessage: "",
       filter: "",
-      page: 1
+      page: 1,
+      maxGraphElements: 1
     };
   },
   methods: {
+    calculateMaxGraphElements() {
+      if (!this.$refs) {
+        return;
+      }
+      this.maxGraphElements = this.$refs.graph.clientWidth / 38;
+    },
     formatPrice(price) {
       if (typeof price === "number") {
         return price > 1 ? price.toFixed(2) : price.toPrecision(2);
@@ -282,6 +292,7 @@ export default {
 
     select(t) {
       this.selectedTicker = t;
+      this.$nextTick().then(this.calculateMaxGraphElements);
     },
     updateTickers(tickerName, price, invalid = false) {
       this.tickers
@@ -291,6 +302,11 @@ export default {
           t.invalid = invalid;
           if (t === this.selectedTicker) {
             this.graph.push(price);
+            if (this.graph.length > this.maxGraphElements) {
+              this.graph = this.graph.slice(
+                this.graph.length - this.maxGraphElements
+              );
+            }
           }
         });
     }
@@ -336,7 +352,12 @@ export default {
       return { filter: this.filter, page: this.page };
     }
   },
-
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxGraphElements);
+  },
+  beforeUnmount() {
+    window.removeEventListener("resize", this.calculateMaxGraphElements);
+  },
   async created() {
     const data = await loadAllCoins();
     this.coinsList = Object.keys(data.Data).map(symbol => ({
@@ -396,6 +417,13 @@ export default {
         document.title,
         `${window.location.pathname}?filter=${value.filter}&page=${value.page}`
       );
+    },
+    maxGraphElements() {
+      if (this.graph.length > this.maxGraphElements) {
+        this.graph = this.graph.slice(
+          this.graph.length - this.maxGraphElements
+        );
+      }
     }
   }
 };

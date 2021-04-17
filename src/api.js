@@ -88,7 +88,6 @@ function handleResponse(e) {
   if (!currency) {
     return false;
   }
-  debugger;
   switch (type) {
     case AGGREGATE_INDEX:
       if (newPrice !== undefined) {
