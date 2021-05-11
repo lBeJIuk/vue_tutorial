@@ -1,9 +1,5 @@
 # vue_tutorial
 
-
-
-
-
 ## Project setup
 ```
 npm install
